@@ -1,0 +1,44 @@
+{
+  "name": "auth0-coreos-tools",
+  "author": {
+    "name": "Tomasz Janczuk <tomasz@janczuk.org>",
+    "url": "http://tomasz.janczuk.org",
+    "twitter": "tjanczuk"
+  },
+  "version": "0.1.0-pre",
+  "description": "Utilities for running Node.js apps in CoreOS",
+  "tags": [
+    "auth0",
+    "nodejs",
+    "node",
+    "docker",
+    "etcd",
+    "coreos"
+  ],
+  "engines": {
+    "node": ">= 0.10"
+  },
+  "licenses": [
+    {
+      "type": "Apache",
+      "url": "http://www.apache.org/licenses/LICENSE-2.0"
+    }
+  ],
+  "main": "./lib/index.js",
+  "bin": {
+    "etcd_get": "./bin/cli.js"
+  },
+  "dependencies": {
+    "async": "~0.9.0",
+    "node-etcd": "~2.1.5",
+    "dockerode": "~2.0.3"
+  },
+  "homepage": "http://github.com/auth0/auth0-coreos-tools",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:auth0/auth0-coreos-tools.git"
+  },
+  "bugs": {
+    "url": "http://github.com/auth0/auth0-coreos-tools/issues"
+  }
+}
