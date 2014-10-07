@@ -1,6 +1,6 @@
 if (typeof process.argv[2] !== 'string') 
     throw new Error('Usage: etcd_get {key} [--toupper]');
-if (typeof process.argv[3] !== undefined && process.argv[3] !== '--toupper')
+if (process.argv[3] !== undefined && process.argv[3] !== '--toupper')
     throw new Error('Unrecognized option: ' + process.argv[3] + '. Usage: etcd_get {key} [--toupper]');
 
 require('../lib/index').etcd_get(process.argv[2], function (error, result) {
