@@ -1,4 +1,4 @@
- #!/usr/bin/env node
+#!/usr/bin/env node
 
 if (typeof process.argv[2] !== 'string') 
     throw new Error('Usage: etcd_get {key} [--upper]');
