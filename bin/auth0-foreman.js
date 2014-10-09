@@ -77,6 +77,10 @@ async.series([
         // Etablish signal file and watch it, then start the backend
         // and wait for it to signal back, or for the startup timer to expire.
 
+        // Add ETCD config to environment
+
+        process.env.JSON_CONFIG = JSON.stringify(coreos_tools.upper(config));
+
         fs.writeFileSync(options.signal_file, '');
         var watch = fs.watch(options.signal_file, { persistent: false });
         backend = spawn(options.backend_cmd, options.backend_args, { 
