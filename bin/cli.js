@@ -12,19 +12,13 @@ while (process.argv[z] !== undefined) {
     z++;
 }
 
-require('../lib/index').etcd_get(process.argv[2], function (error, result) {
+var coreos_tools = require('../lib/index');
+
+coreos_tools.etcd_get(process.argv[2], function (error, result) {
     if (error)
         throw error;
 
     if (toupper) 
-        result = upper(result);
+        result = coreos_tools.upper(result);
     console.log(JSON.stringify(result, null, 2));
 });
-
-// Convert object property names to uppercase
-function upper(o) {
-    var r = {};
-    for (var k in o) 
-        r[k.toUpperCase()] = typeof o[k] === 'object' ? upper(o[k]) : o[k];
-    return r;
-}
