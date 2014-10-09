@@ -26,7 +26,8 @@
   ],
   "main": "./lib/index.js",
   "bin": {
-    "etcd_get": "./bin/cli.js"
+    "etcd_get": "./bin/cli.js",
+    "auth0-foreman": "./bin/auth0-foreman.js"
   },
   "dependencies": {
     "async": "~0.9.0",
