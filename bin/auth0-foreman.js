@@ -48,7 +48,7 @@ process.env.SIGNAL_FILE = options.signal_file =
 
 var async = require('async')
     , fs = require('fs')
-    , spawn = reqiure('child_process').spawn
+    , spawn = require('child_process').spawn
     , http = require('http')
     , host = process.env.COREOS_HOST || '127.0.0.1'
     , etcd = new (require('node-etcd'))(host)
@@ -58,13 +58,22 @@ var async = require('async')
 // Container name and config path.
 var container_name = options.app_name + '-' + options.app_id;
 var config_path = '/routes/' + options.app_name + '/' + options.app_id;
-var target_port = options.port + '/tcp';
-var container = docker.getContainer(container_name);
+var target_port = options.app_port + '/tcp';
+var container = docker.getContainer(container_name); 
 
 var route;
 var route_timer;
 var config;
+var config_created;
 var backend;
+
+// Register to clean up on process exit
+process.on('uncaughtException', function (e) {
+    console.error('Uncaught exception', e.stack || e);
+    last_resort_cleanup();
+});
+process.on('exit', last_resort_cleanup);
+
 async.series([
     function (callback) {
         // Get etcd config
@@ -78,7 +87,6 @@ async.series([
         // and wait for it to signal back, or for the startup timer to expire.
 
         // Add ETCD config to environment
-
         process.env.JSON_CONFIG = JSON.stringify(coreos_tools.upper(config));
 
         fs.writeFileSync(options.signal_file, '');
@@ -106,7 +114,7 @@ async.series([
             if (reason === 'exit')
                 callback(new Error('Backend process terminated unexpectedly during startup.'));
             else { 
-                // Timeout may indicate backends that do not know how to signal, 
+                // Timeout may indicate backend that does not know how to signal, 
                 // so assume innocence for now.
 
                 // Register to detect backend's exit going forward:
@@ -129,7 +137,7 @@ async.series([
                     if (error)
                         return callback(error);
                     attempts--;
-                    delay *= backoff;
+                    delay *= Math.floor(delay * backoff);
                     if (info.NetworkSettings
                         && typeof info.NetworkSettings.Ports === 'object'
                         && Array.isArray(info.NetworkSettings.Ports[target_port])
@@ -168,6 +176,7 @@ async.series([
     },
     function (callback) {
         // Register static metadata in etcd
+        config_created = true;
         async.parallel([
             function (callback) {
                 etcd.set(config_path + '/created', Date.now(), callback);
@@ -218,24 +227,20 @@ async.series([
 
                 // Let active requests complete up to the graceful shutdown timeout
                 setTimeout(function () {
-                    if (backend)
-                        try { backend.kill('SIGKILL'); } catch (e) {};
+                    last_resort_cleanup();
                     process.exit(exitCode);
                 }, +config.graceful_shutdown_timeout * 1000);
             });
         }
-
-        callback();
     }
 ], function (error) {
-    if (backend) {
-        backend.removeAllListeners();
-        try { backend.kill('SIGKILL'); } catch(e) {};
-    }
-    if (error) throw error;
+    last_resort_cleanup();
+    throw error;
 });
 
 function backend_exited(code) {
+    assert.ok(backend);
+    
     backend.removeAllListeners();
     var graceful_exit_code = backend.graceful_exit_code;
     backend = undefined;
@@ -255,5 +260,23 @@ function backend_exited(code) {
 
     function exit_now() {
         process.exit(graceful_exit_code !== undefined ? graceful_exit_code : code);
+    }
+}
+
+function last_resort_cleanup() {
+    if (backend) {
+        backend.removeAllListeners();
+        try { backend.kill('SIGKILL'); } catch(e) {}
+        backend = undefined;
+    }
+
+    if (route_timer) {
+        clearTimeout(route_timer);
+        route_timer = undefined;
+    }
+
+    if (config_created) {
+        etcd.del(config_path, { recursive: true });
+        config_created = undefined;
     }
 }
