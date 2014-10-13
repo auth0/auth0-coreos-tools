@@ -4,13 +4,14 @@
 
 // APP_NAME - application name (e.g. 'docs')
 // APP_ID - application ID unique within application name (e.g. '1')
-// APP_PORT - the TCP port the application listens on within the container
 // COREOS_HOST - IP or hostname of the VM the Docker container is running on
 // IMAGE - the Docker image this container is running
 
 /////// Optional environment variables:
 
-// APP_HELATH_URL = URL path that must respond with HTTP 200 for the sevice to be healthy
+// APP_HEALTH_URL = URL path that must respond with HTTP 200 for the sevice to be healthy
+// APP_PORT - the TCP port the application listens on within the container; if not provided,
+//            the foreman will not wait for the Docker port mapping
 
 /////// Required command line parameters: 
 
@@ -23,7 +24,7 @@
 var assert = require('assert');
 
 var options = {};
-['APP_NAME', 'APP_ID', 'APP_PORT', 'COREOS_HOST', 'IMAGE']
+['APP_NAME', 'APP_ID', 'COREOS_HOST', 'IMAGE']
     .forEach(function (v) { 
         assert.ok(process.env[v] !== undefined, v + ' environment variable not set.'); 
         options[v.toLowerCase()] = process.env[v];
@@ -32,6 +33,7 @@ var options = {};
 // Test URL path is optional
 
 options.app_health_url = process.env.APP_HEALTH_URL;
+options.app_port = process.env.APP_PORT;
 
 // Obtain command and arguments to start the backend
 
@@ -126,7 +128,12 @@ async.series([
         }
     },
     function (callback) {
-        // Wait for the docker port mapping
+        // Wait for the docker port mapping if requested
+        if (!options.app_port) {
+            route = 'default';
+            return callback();
+        }
+
         var attempts = +config.docker_port_registration_retry_count;
         var delay = +config.docker_port_registration_retry_delay;
         var backoff = +config.docker_port_registration_retry_backoff;
