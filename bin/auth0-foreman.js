@@ -225,19 +225,29 @@ async.series([
                 route_timer = undefined;
             }
 
-            etcd.del(config_path, { recursive: true }, function () {
-                // Gracefully stop the server after cooldown timeout
-                setTimeout(function () {
-                    if (backend)
-                        backend.kill(signal);
-                }, +config.cooldown_timeout * 1000);
+            async.series([
+                function (callback) {
+                    // Mark the container as recycling in etcd
+                    etcd.set(config_path + '/recycling_started', Date.now(), callback);
+                },
+                function (callback) {
+                    // Remove routing information from etcd
+                    etcd.del(config_path + '/port', callback);
+                },
+                function (callback) {
+                    // Gracefully stop the server after cooldown timeout
+                    setTimeout(function () {
+                        if (backend)
+                            backend.kill(signal);
+                    }, +config.cooldown_timeout * 1000);
 
-                // Let active requests complete up to the graceful shutdown timeout
-                setTimeout(function () {
-                    last_resort_cleanup();
-                    process.exit(exitCode);
-                }, +config.graceful_shutdown_timeout * 1000);
-            });
+                    // Let active requests complete up to the graceful shutdown timeout
+                    setTimeout(function () {
+                        last_resort_cleanup();
+                        process.exit(exitCode);
+                    }, +config.graceful_shutdown_timeout * 1000);
+                }
+            ], callback);
         }
     }
 ], function (error) {
