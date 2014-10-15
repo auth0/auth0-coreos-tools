@@ -228,7 +228,7 @@ async.series([
             async.series([
                 function (callback) {
                     // Mark the container as recycling in etcd
-                    etcd.set(config_path + '/recycling_started', Date.now(), callback);
+                    etcd.set(config_path + '/recycling', Date.now(), callback);
                 },
                 function (callback) {
                     // Remove routing information from etcd
@@ -261,23 +261,15 @@ function backend_exited(code) {
     backend.removeAllListeners();
     var graceful_exit_code = backend.graceful_exit_code;
     backend = undefined;
-
-    if (graceful_exit_code !== undefined)
-        // This is the last step of the graceful exit. Just terminate the process.
-        exit_now();
-    else {
-        // Backend terminated unexpectedly. Clean up etcd then exit the process.
-        if (route_timer) {
-            clearTimeout(route_timer);
-            route_timer = undefined;
-        }
-
-        etcd.del(config_path, { recursive: true }, exit_now);
+    
+    if (route_timer) {
+        clearTimeout(route_timer);
+        route_timer = undefined;
     }
 
-    function exit_now() {
+    etcd.del(config_path, { recursive: true }, function () {
         process.exit(graceful_exit_code !== undefined ? graceful_exit_code : code);
-    }
+    });
 }
 
 function last_resort_cleanup() {
