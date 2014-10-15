@@ -52,6 +52,7 @@ var async = require('async')
     , fs = require('fs')
     , spawn = require('child_process').spawn
     , http = require('http')
+    , winston = require('winston')
     , host = process.env.COREOS_HOST || '127.0.0.1'
     , etcd = new (require('node-etcd'))(host)
     , docker = new (require('dockerode'))({ host: host, port: 2375 })
@@ -71,7 +72,7 @@ var backend;
 
 // Register to clean up on process exit
 process.on('uncaughtException', function (e) {
-    console.error('Uncaught exception', e.stack || e);
+    winston.error('Foreman: Uncaught exception', e.stack || e);
     last_resort_cleanup();
 });
 process.on('exit', last_resort_cleanup);
@@ -80,6 +81,7 @@ async.series([
     function (callback) {
         // Get etcd config
         coreos_tools.etcd_get('/config', function (error, result) {
+            winston.info('Foreman: Obtained config', error, config);
             config = result;
             callback(error);
         });
@@ -107,6 +109,7 @@ async.series([
 
         var done_reason;
         function done(reason) {
+            winston.info('Foreman: Finished waiting for component to startup', reason);
             if (done_reason) return;
             done_reason = reason;
             backend.removeAllListeners();
@@ -141,6 +144,7 @@ async.series([
             function (callback) {
                 // Check if docker container port had been mapped.
                 container.inspect(function (error, info) {
+                    winston.info('Foreman: Waiting for Docker port mapping', attempts, error)
                     if (error)
                         return callback(error);
                     attempts--;
@@ -167,17 +171,21 @@ async.series([
             callback);
     },
     function (callback) {
+        winston.info('Foreman: Establishd port mapping', route);
         // Send the test HTTP GET request to validate the backend
         if (!options.app_health_url)
             return callback();
 
         var url = 'http://' + options.coreos_host + ':' + route + options.app_health_url;
+        winston.info('Foreman: Probing health endpoint', url);
         http.get(url, function (res) {
+            winston.info('Foreman: Health endpoint response', res.statusCode);
             callback(res.statusCode === 200 
                 ? undefined 
                 : new Error('Backend did not respond to health check at ' 
                     + url + ' with status code 200: ' + res.statusCode))
         }).on('error', function (error) {
+            winston.error('Foreman: Health endpoint error', error);
             callback(new Error('Backend failed to respond to health check at ' + url));
         });
     },
@@ -197,6 +205,7 @@ async.series([
         ], callback);
     },
     function (callback) {
+        winston.info('Foreman: Created routing entry in etcd')
         // Keep container route registration in etcd current with a TTL
         var route_config_path = config_path + '/port';
         async.forever(
@@ -206,7 +215,8 @@ async.series([
                     route_timer = setTimeout(next, 45000);
                 });
             }, 
-            function () { 
+            function (error) { 
+                winston.error('Foreman: Error updating route entry in etcd', error);
                 recycle('SIGTERM', 105); 
             });
 
@@ -216,6 +226,7 @@ async.series([
             .once('SIGINT', function () { recycle('SIGINT', 0); });
 
         function recycle(signal, exitCode) {
+            winston.info('Foreman: Recycling', signal, exitCode);
             if (backend)
                 backend.graceful_exit_code = exitCode;
 
@@ -237,54 +248,65 @@ async.series([
                 function (callback) {
                     // Gracefully stop the server after cooldown timeout
                     setTimeout(function () {
+                        winston.info('Foreman: Cooldown time elapsed, sending SIGTERM to backend', backend !== undefined);
                         if (backend)
                             backend.kill(signal);
                     }, +config.cooldown_timeout * 1000);
+                    winston.info('Foreman: Initiated cooldown timer', +config.cooldown_timeout);
 
                     // Let active requests complete up to the graceful shutdown timeout
                     setTimeout(function () {
+                        winston.info('Foreman: Graceful shutdown time elapsed, exiting foreman');
                         last_resort_cleanup();
                         process.exit(exitCode);
                     }, +config.graceful_shutdown_timeout * 1000);
+                    winston.info('Foreman: Initiated graceful shutdown timer', +config.graceful_shutdown_timeout);
                 }
             ], callback);
         }
     }
 ], function (error) {
+    winston.error('Foreman: Foreman error', error);
     last_resort_cleanup();
     throw error;
 });
 
 function backend_exited(code) {
+    winston.info('Foreman: Backend exited', code);
     assert.ok(backend);
     
     backend.removeAllListeners();
     var graceful_exit_code = backend.graceful_exit_code;
     backend = undefined;
-    
+
     if (route_timer) {
         clearTimeout(route_timer);
         route_timer = undefined;
     }
 
     etcd.del(config_path, { recursive: true }, function () {
+        winston.info('Foreman: Deleted routing entry in etcd', config_path);
         process.exit(graceful_exit_code !== undefined ? graceful_exit_code : code);
     });
 }
 
 function last_resort_cleanup() {
+    winston.info('Foreman: Last resort cleanup started');
     if (backend) {
+        winston.info('Foreman: Last resort cleanup: killing backend');
         backend.removeAllListeners();
         try { backend.kill('SIGKILL'); } catch(e) {}
         backend = undefined;
     }
 
     if (route_timer) {
+        winston.info('Foreman: Last resort cleanup: stopping route update timer');
         clearTimeout(route_timer);
         route_timer = undefined;
     }
 
     if (config_created) {
+        winston.info('Foreman: Last resort cleanup: removing routing entry in etcd');
         etcd.del(config_path, { recursive: true });
         config_created = undefined;
     }
