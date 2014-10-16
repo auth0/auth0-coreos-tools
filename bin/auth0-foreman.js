@@ -178,7 +178,12 @@ async.series([
 
         var url = 'http://' + options.coreos_host + ':' + route + options.app_health_url;
         winston.info('Foreman: Probing health endpoint', url);
-        http.get(url, function (res) {
+        http.get({
+            agent: false, // don't use keep-alive which prevents server from closing down
+            host: options.coreos_host,
+            port: route,
+            path: options.app_health_url
+        }, function (res) {
             winston.info('Foreman: Health endpoint response', res.statusCode);
             callback(res.statusCode === 200 
                 ? undefined 
