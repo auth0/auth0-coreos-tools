@@ -43,7 +43,15 @@ options.backend_cmd = process.argv.shift();
 options.backend_args = process.argv;
 assert.ok(options.backend_cmd, 'The command and arguments to start the backend must be specified as command line parameters.');
 
-// Establish signal file name to allow the backend to signal readiness
+// Establish the mechanism the server will use to signal the foreman. Allowed values are 'stdout' or 'file'.
+
+process.env.SIGNAL_METHOD = options.signal_method = 
+    process.env.SIGNAL_METHOD || 'file'; 
+assert.ok(options.signal_method === 'file' || options.signal_method === 'stdout', 
+    'SIGNAL_METHOD environment variable must be either `file` or `stdout`.');
+
+// Establish signal file name to allow the backend to signal readiness. This is only
+// used when SIGNAL_METHOD === 'file'
 
 process.env.SIGNAL_FILE = options.signal_file = 
     process.env.SIGNAL_FILE || '/data/backend_signal';
@@ -93,8 +101,19 @@ async.series([
         // Add ETCD config to environment
         process.env.JSON_CONFIG = JSON.stringify(coreos_tools.upper(config));
 
-        fs.writeFileSync(options.signal_file, '');
-        var watch = fs.watch(options.signal_file, { persistent: false });
+        var watch;
+        if (options.signal_method === 'file') {
+            // Wait for changes to the SIGNAL_FILE made by the server
+            fs.writeFileSync(options.signal_file, '');
+            watch = fs.watch(options.signal_file, { persistent: false });
+            watch.once('change', function () { done('signal'); });
+        }
+        else { // 'stdout'
+            // Wait for the server to write LISTENING to stdout
+            process.stdout.setEncoding('utf8');
+            process.stdout.on('data', stdout_listener);
+        }
+
         backend = spawn(options.backend_cmd, options.backend_args, { 
             env: process.env,
             stdio: 'inherit'
@@ -102,10 +121,14 @@ async.series([
 
         backend.once('exit', function () { done('exit'); });
         backend.once('error', function () { done('exit'); });
-        watch.once('change', function () { done('signal'); });
         var timeout = setTimeout(function () { 
             done('timeout'); 
         }, +config.container_registration_timeout * 1000);
+
+        function stdout_listener(data) {
+            if (data.indexOf('LISTENING') >= 0)
+                done('signal');
+        }
 
         var done_reason;
         function done(reason) {
@@ -113,7 +136,10 @@ async.series([
             if (done_reason) return;
             done_reason = reason;
             backend.removeAllListeners();
-            watch.removeAllListeners();
+            if (options.signal_method === 'file') 
+                watch.removeAllListeners();
+            else
+                process.stdout.removeListener(stdout_listener);
             if (done_reason !== 'timeout') 
                 clearTimeout(timeout);
             if (reason === 'exit')
