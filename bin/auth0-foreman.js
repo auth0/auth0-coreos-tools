@@ -48,7 +48,7 @@ assert.ok(options.backend_cmd, 'The command and optional arguments to start the 
 // - `inproc` means in-process node.js module with child_process.spawn-like API contract
 
 process.env.ACTIVATION_METHOD = options.activation_method = 
-    process.env.ACTIVATION_METHOD || (options.backend_cmd.indexOf('.js') > 0 ? 'inprox' : 'exec'); 
+    process.env.ACTIVATION_METHOD || (options.backend_cmd.indexOf('.js') > 0 ? 'inproc' : 'exec'); 
 assert.ok(options.activation_method === 'exec' || options.activation_method === 'inproc', 
     'ACTIVATION_METHOD environment variable must be either `exec` or `inproc`.');
 
@@ -92,7 +92,7 @@ async.series([
     function (callback) {
         // Get etcd config
         coreos_tools.etcd_get('/config', function (error, result) {
-            winston.info('Foreman: Obtained config', error, config);
+            winston.info('Foreman: Obtained config', error);
             config = result;
             callback(error);
         });
