@@ -41,30 +41,33 @@ process.argv.shift();
 process.argv.shift();
 options.backend_cmd = process.argv.shift();
 options.backend_args = process.argv;
-assert.ok(options.backend_cmd, 'The command and arguments to start the backend must be specified as command line parameters.');
+assert.ok(options.backend_cmd, 'The command and optional arguments to start the backend must be specified as command line parameters.');
 
-// Establish the mechanism the server will use to signal the foreman. Allowed values are 'stdout' or 'file'.
+// Establish the mechanism the foreman will use to activate the service:
+// - `exec` means external executable
+// - `inproc` means in-process node.js module with child_process.spawn-like API contract
 
-process.env.SIGNAL_METHOD = options.signal_method = 
-    process.env.SIGNAL_METHOD || 'file'; 
-assert.ok(options.signal_method === 'file' || options.signal_method === 'stdout', 
-    'SIGNAL_METHOD environment variable must be either `file` or `stdout`.');
+process.env.ACTIVATION_METHOD = options.activation_method = 
+    process.env.ACTIVATION_METHOD || (options.backend_cmd.indexOf('.js') > 0 ? 'inprox' : 'exec'); 
+assert.ok(options.activation_method === 'exec' || options.activation_method === 'inproc', 
+    'ACTIVATION_METHOD environment variable must be either `exec` or `inproc`.');
 
 // Establish signal file name to allow the backend to signal readiness. This is only
-// used when SIGNAL_METHOD === 'file'
+// used when ACTIVATION_METHOD === 'exec'
 
 process.env.SIGNAL_FILE = options.signal_file = 
     process.env.SIGNAL_FILE || '/data/backend_signal';
 
 var async = require('async')
     , fs = require('fs')
-    , spawn = require('child_process').spawn
     , http = require('http')
     , winston = require('winston')
     , host = process.env.COREOS_HOST || '127.0.0.1'
     , etcd = new (require('node-etcd'))(host)
     , docker = new (require('dockerode'))({ host: host, port: 2375 })
     , coreos_tools = require('../lib/index');
+
+winston.info('Foreman: starting', options);
 
 // Container name and config path.
 var container_name = options.app_name + '-' + options.app_id;
@@ -101,21 +104,24 @@ async.series([
         // Add ETCD config to environment
         process.env.JSON_CONFIG = JSON.stringify(coreos_tools.upper(config));
 
+        // Get the method to activate the server based on activation method
+        var spawn_real = options.activation_method === 'exec' 
+            ? require('child_process').spawn 
+            : require(options.backend_cmd).spawn;
+
         var watch;
-        if (options.signal_method === 'file') {
+        if (options.activation_method === 'exec') {
             // Wait for changes to the SIGNAL_FILE made by the server
             fs.writeFileSync(options.signal_file, '');
             watch = fs.watch(options.signal_file, { persistent: false });
             watch.once('change', function () { done('signal'); });
         }
-        else { // 'stdout'
+        else { // 'inproc'
             // Wait for the server to write LISTENING to stdout
             process.stdout.setEncoding('utf8');
             process.stdout.on('data', stdout_listener);
         }
 
-        if (options.backend_cmd.indexOf('docker') !== -1)
-            process.env.LD_LIBRARY_PATH = '/data/lib64';
         backend = spawn(options.backend_cmd, options.backend_args, { 
             env: process.env,
             stdio: 'inherit'
@@ -138,7 +144,7 @@ async.series([
             if (done_reason) return;
             done_reason = reason;
             backend.removeAllListeners();
-            if (options.signal_method === 'file') 
+            if (options.activation_method === 'exec') 
                 watch.removeAllListeners();
             else
                 process.stdout.removeListener(stdout_listener);
