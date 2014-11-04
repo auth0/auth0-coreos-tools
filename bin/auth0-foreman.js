@@ -114,6 +114,8 @@ async.series([
             process.stdout.on('data', stdout_listener);
         }
 
+        if (options.backend_cmd.indexOf('docker') !== -1)
+            process.env.LD_LIBRARY_PATH = '/data/lib64';
         backend = spawn(options.backend_cmd, options.backend_args, { 
             env: process.env,
             stdio: 'inherit'
