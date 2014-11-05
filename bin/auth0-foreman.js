@@ -281,7 +281,7 @@ async.series([
                 function (callback) {
                     // Gracefully stop the server after cooldown timeout
                     setTimeout(function () {
-                        winston.info('foreman: cooldown time elapsed, sending SIGTERM to backend', backend !== undefined);
+                        winston.info('foreman: cooldown time elapsed, killing backend', backend !== undefined, signal);
                         if (backend)
                             backend.kill(signal);
                     }, +config.cooldown_timeout * 1000);
