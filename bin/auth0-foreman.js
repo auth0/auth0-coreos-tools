@@ -345,7 +345,10 @@ function last_resort_cleanup(callback) {
                         else {
                             // This is the child_process based implementation
                             try { tmp.kill('SIGKILL'); } catch(e) {}
-                            callback();
+                            // Remove the child Docker container
+                            container.remove({ force: true }, function () {
+                                callback();
+                            });
                         }
                     }
                     else 
