@@ -67,6 +67,9 @@ var async = require('async')
     , docker = new (require('dockerode'))({ host: host, port: 2375 })
     , coreos_tools = require('../lib/index');
 
+winston.remove(winston.transports.Console);
+winston.add(winston.transports.Console, { timestamp: true });    
+
 winston.info('foreman: starting', options);
 
 // Container name and config path.
