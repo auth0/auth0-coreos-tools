@@ -67,7 +67,7 @@ var async = require('async')
     , docker = new (require('dockerode'))({ host: host, port: 2375 })
     , coreos_tools = require('../lib/index');
 
-winston.info('Foreman: starting', options);
+winston.info('foreman: starting', options);
 
 // Container name and config path.
 var container_name = options.app_name + '-' + options.app_id;
@@ -83,16 +83,20 @@ var backend;
 
 // Register to clean up on process exit
 process.on('uncaughtException', function (e) {
-    winston.error('Foreman: Uncaught exception', e.stack || e);
-    last_resort_cleanup();
+    winston.error('foreman: uncaught exception', e.stack || e);
+    last_resort_cleanup(function () {
+        process.exit(1);
+    });
 });
-process.on('exit', last_resort_cleanup);
+process.on('exit', function () { 
+    last_resort_cleanup(function () {});
+});
 
 async.series([
     function (callback) {
         // Get etcd config
         coreos_tools.etcd_get('/config', function (error, result) {
-            winston.info('Foreman: Obtained config', error);
+            winston.info('foreman: obtained config', error);
             config = result;
             callback(error);
         });
@@ -104,50 +108,39 @@ async.series([
         // Add ETCD config to environment
         process.env.JSON_CONFIG = JSON.stringify(coreos_tools.upper(config));
 
-        // Get the method to activate the server based on activation method
-        var spawn_real = options.activation_method === 'exec' 
-            ? require('child_process').spawn 
-            : require(options.backend_cmd).spawn;
-
-        var watch;
+        var watch, spawn_impl;
         if (options.activation_method === 'exec') {
+            // Get the child process spawn command
+            spawn_impl = require('child_process').spawn;
             // Wait for changes to the SIGNAL_FILE made by the server
             fs.writeFileSync(options.signal_file, '');
             watch = fs.watch(options.signal_file, { persistent: false });
             watch.once('change', function () { done('signal'); });
         }
-        else { // 'inproc'
-            // Wait for the server to write LISTENING to stdout
-            process.stdout.setEncoding('utf8');
-            process.stdout.on('data', stdout_listener);
-        }
+        else // 'inproc'
+            // Get the inproc activation method that mimics the spawn contract
+            spawn_impl = require(options.backend_cmd).spawn;
 
-        backend = spawn(options.backend_cmd, options.backend_args, { 
+        backend = spawn_impl(options.backend_cmd, options.backend_args, { 
             env: process.env,
             stdio: 'inherit'
         });
 
         backend.once('exit', function () { done('exit'); });
         backend.once('error', function () { done('exit'); });
+        // The `ready` event is a mechanism used by inproc servers (e.g. sandbox) 
+        // to signal readiness
+        backend.once('ready', function () { done('signal'); });
         var timeout = setTimeout(function () { 
             done('timeout'); 
         }, +config.container_registration_timeout * 1000);
 
-        function stdout_listener(data) {
-            if (data.indexOf('LISTENING') >= 0)
-                done('signal');
-        }
-
         var done_reason;
         function done(reason) {
-            winston.info('Foreman: Finished waiting for component to startup', reason);
+            winston.info('foreman: finished waiting for component to startup', reason);
             if (done_reason) return;
             done_reason = reason;
             backend.removeAllListeners();
-            if (options.activation_method === 'exec') 
-                watch.removeAllListeners();
-            else
-                process.stdout.removeListener(stdout_listener);
             if (done_reason !== 'timeout') 
                 clearTimeout(timeout);
             if (reason === 'exit')
@@ -178,13 +171,14 @@ async.series([
             function (callback) {
                 // Check if docker container port had been mapped.
                 container.inspect(function (error, info) {
-                    winston.info('Foreman: Waiting for Docker port mapping', attempts, error)
+                    winston.info('foreman: waiting for Docker port mapping', attempts, error);
                     if (error)
                         return callback(error);
                     attempts--;
                     delay *= Math.floor(delay * backoff);
                     if (info.NetworkSettings
                         && typeof info.NetworkSettings.Ports === 'object'
+                        && info.NetworkSettings.Ports
                         && Array.isArray(info.NetworkSettings.Ports[target_port])
                         && info.NetworkSettings.Ports[target_port].length === 1
                         && info.NetworkSettings.Ports[target_port][0].HostPort) 
@@ -205,26 +199,26 @@ async.series([
             callback);
     },
     function (callback) {
-        winston.info('Foreman: Establishd port mapping', route);
+        winston.info('foreman: established port mapping', route);
         // Send the test HTTP GET request to validate the backend
         if (!options.app_health_url)
             return callback();
 
         var url = 'http://' + options.coreos_host + ':' + route + options.app_health_url;
-        winston.info('Foreman: Probing health endpoint', url);
+        winston.info('foreman: probing health endpoint', url);
         http.get({
             agent: false, // don't use keep-alive which prevents server from closing down
             host: options.coreos_host,
             port: route,
             path: options.app_health_url
         }, function (res) {
-            winston.info('Foreman: Health endpoint response', res.statusCode);
+            winston.info('foreman: health endpoint response', res.statusCode);
             callback(res.statusCode === 200 
                 ? undefined 
                 : new Error('Backend did not respond to health check at ' 
                     + url + ' with status code 200: ' + res.statusCode))
         }).on('error', function (error) {
-            winston.error('Foreman: Health endpoint error', error);
+            winston.error('foreman: health endpoint error', error);
             callback(new Error('Backend failed to respond to health check at ' + url));
         });
     },
@@ -244,7 +238,7 @@ async.series([
         ], callback);
     },
     function (callback) {
-        winston.info('Foreman: Created routing entry in etcd')
+        winston.info('foreman: created routing entry in etcd')
         // Keep container route registration in etcd current with a TTL
         var route_config_path = config_path + '/port';
         async.forever(
@@ -255,7 +249,7 @@ async.series([
                 });
             }, 
             function (error) { 
-                winston.error('Foreman: Error updating route entry in etcd', error);
+                winston.error('foreman: error updating route entry in etcd', error);
                 recycle('SIGTERM', 105); 
             });
 
@@ -265,7 +259,7 @@ async.series([
             .once('SIGINT', function () { recycle('SIGINT', 0); });
 
         function recycle(signal, exitCode) {
-            winston.info('Foreman: Recycling', signal, exitCode);
+            winston.info('foreman: recycling', signal, exitCode);
             if (backend)
                 backend.graceful_exit_code = exitCode;
 
@@ -287,31 +281,33 @@ async.series([
                 function (callback) {
                     // Gracefully stop the server after cooldown timeout
                     setTimeout(function () {
-                        winston.info('Foreman: Cooldown time elapsed, sending SIGTERM to backend', backend !== undefined);
+                        winston.info('foreman: cooldown time elapsed, sending SIGTERM to backend', backend !== undefined);
                         if (backend)
                             backend.kill(signal);
                     }, +config.cooldown_timeout * 1000);
-                    winston.info('Foreman: Initiated cooldown timer', +config.cooldown_timeout);
+                    winston.info('foreman: initiated cooldown timer', +config.cooldown_timeout);
 
                     // Let active requests complete up to the graceful shutdown timeout
                     setTimeout(function () {
-                        winston.info('Foreman: Graceful shutdown time elapsed, exiting foreman');
-                        last_resort_cleanup();
-                        process.exit(exitCode);
+                        winston.info('foreman: graceful shutdown time elapsed, exiting foreman');
+                        last_resort_cleanup(function () {
+                            process.exit(exitCode);
+                        });
                     }, +config.graceful_shutdown_timeout * 1000);
-                    winston.info('Foreman: Initiated graceful shutdown timer', +config.graceful_shutdown_timeout);
+                    winston.info('foreman: initiated graceful shutdown timer', +config.graceful_shutdown_timeout);
                 }
             ], callback);
         }
     }
 ], function (error) {
-    winston.error('Foreman: Foreman error', error);
-    last_resort_cleanup();
-    throw error;
+    winston.error('foreman: foreman error', error);
+    last_resort_cleanup(function () {
+        throw error;
+    });    
 });
 
 function backend_exited(code) {
-    winston.info('Foreman: Backend exited', code);
+    winston.info('foreman: backend exited', code);
     assert.ok(backend);
     
     backend.removeAllListeners();
@@ -324,29 +320,51 @@ function backend_exited(code) {
     }
 
     etcd.del(config_path, { recursive: true }, function () {
-        winston.info('Foreman: Deleted routing entry in etcd', config_path);
+        winston.info('foreman: deleted routing entry in etcd', config_path);
         process.exit(graceful_exit_code !== undefined ? graceful_exit_code : code);
     });
 }
 
-function last_resort_cleanup() {
-    winston.info('Foreman: Last resort cleanup started');
-    if (backend) {
-        winston.info('Foreman: Last resort cleanup: killing backend');
-        backend.removeAllListeners();
-        try { backend.kill('SIGKILL'); } catch(e) {}
-        backend = undefined;
-    }
+function last_resort_cleanup(callback) {
+    winston.info('foreman: last resort cleanup entered');
 
     if (route_timer) {
-        winston.info('Foreman: Last resort cleanup: stopping route update timer');
+        winston.info('foreman: last resort cleanup: stopping route update timer');
         clearTimeout(route_timer);
         route_timer = undefined;
     }
 
-    if (config_created) {
-        winston.info('Foreman: Last resort cleanup: removing routing entry in etcd');
-        etcd.del(config_path, { recursive: true });
-        config_created = undefined;
-    }
+    async.parallel([
+        function (callback) {
+            if (backend) {
+                var tmp = backend;
+                backend = undefined;
+                winston.info('foreman: last resort cleanup: killing backend');
+                tmp.removeAllListeners();
+                if (tmp.kill.is_async) {
+                    // This is the Docker based implementation which is async
+                    // because it uses Docker client.
+                    tmp.kill('SIGKILL', callback);
+                }
+                else {
+                    // This is the child_process based implementation
+                    try { tmp.kill('SIGKILL'); } catch(e) {}
+                    callback();
+                }
+            }
+            else 
+                callback();
+        },
+        function (callback) {
+            if (config_created) {
+                config_created = undefined;
+                winston.info('foreman: last resort cleanup: removing routing entry in etcd');
+                etcd.del(config_path, { recursive: true }, function () {
+                    callback();
+                });
+            }
+            else 
+                callback();
+        }
+    ], callback);
 }
