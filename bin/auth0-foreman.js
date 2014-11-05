@@ -67,8 +67,10 @@ var async = require('async')
     , docker = new (require('dockerode'))({ host: host, port: 2375 })
     , coreos_tools = require('../lib/index');
 
-winston.remove(winston.transports.Console);
-winston.add(winston.transports.Console, { timestamp: true });    
+if (process.env.WINSTON_ADD_TIMESTAMP) {
+    winston.remove(winston.transports.Console);
+    winston.add(winston.transports.Console, { timestamp: true });
+}
 
 winston.info('foreman: starting', options);
 
