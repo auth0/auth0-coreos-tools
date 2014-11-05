@@ -71,6 +71,7 @@ winston.info('foreman: starting', options);
 
 // Container name and config path.
 var container_name = options.app_name + '-' + options.app_id;
+var foreman_container_name = container_name + '-foreman';
 var config_path = '/routes/' + options.app_name + '/' + options.app_id;
 var target_port = options.app_port + '/tcp';
 var container = docker.getContainer(container_name); 
@@ -309,18 +310,9 @@ async.series([
 function backend_exited(code) {
     winston.info('foreman: backend exited', code);
     assert.ok(backend);
-    
-    backend.removeAllListeners();
+
     var graceful_exit_code = backend.graceful_exit_code;
-    backend = undefined;
-
-    if (route_timer) {
-        clearTimeout(route_timer);
-        route_timer = undefined;
-    }
-
-    etcd.del(config_path, { recursive: true }, function () {
-        winston.info('foreman: deleted routing entry in etcd', config_path);
+    last_resort_cleanup(function () {
         process.exit(graceful_exit_code !== undefined ? graceful_exit_code : code);
     });
 }
@@ -334,36 +326,58 @@ function last_resort_cleanup(callback) {
         route_timer = undefined;
     }
 
-    async.parallel([
+    async.series([
         function (callback) {
-            if (backend) {
-                var tmp = backend;
-                backend = undefined;
-                winston.info('foreman: last resort cleanup: killing backend');
-                tmp.removeAllListeners();
-                if (tmp.kill.is_async) {
-                    // This is the Docker based implementation which is async
-                    // because it uses Docker client.
-                    tmp.kill('SIGKILL', callback);
+            // Terminate backed and clean up etcd
+            async.parallel([
+                function (callback) {
+                    // Terminate backend
+                    if (backend) {
+                        var tmp = backend;
+                        backend = undefined;
+                        winston.info('foreman: last resort cleanup: killing backend');
+                        tmp.removeAllListeners();
+                        if (tmp.kill.is_async) {
+                            // This is the Docker based implementation which is async
+                            // because it uses Docker client.
+                            tmp.kill('SIGKILL', callback);
+                        }
+                        else {
+                            // This is the child_process based implementation
+                            try { tmp.kill('SIGKILL'); } catch(e) {}
+                            callback();
+                        }
+                    }
+                    else 
+                        callback();
+                },
+                function (callback) {
+                    // Clean up etcd
+                    if (config_created) {
+                        config_created = undefined;
+                        winston.info('foreman: last resort cleanup: removing routing entry in etcd');
+                        etcd.del(config_path, { recursive: true }, function () {
+                            callback();
+                        });
+                    }
+                    else 
+                        callback();
                 }
-                else {
-                    // This is the child_process based implementation
-                    try { tmp.kill('SIGKILL'); } catch(e) {}
-                    callback();
-                }
-            }
-            else 
-                callback();
+            ], callback);
         },
         function (callback) {
-            if (config_created) {
-                config_created = undefined;
-                winston.info('foreman: last resort cleanup: removing routing entry in etcd');
-                etcd.del(config_path, { recursive: true }, function () {
+            // Remove own container via Docker
+            // TODO: tjanczuk: capture logs before removing foreman
+            if (foreman_container_name) {
+                winston.info('foreman: removing own container', foreman_container_name);
+                var tmp = foreman_container_name;
+                foreman_container_name = undefined;
+                var foreman = docker.getContainer(tmp); 
+                foreman.remove({ force: true }, function () {
                     callback();
                 });
             }
-            else 
+            else
                 callback();
         }
     ], callback);
