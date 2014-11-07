@@ -76,7 +76,7 @@ if (process.env.WINSTON_KAFKA_ZOOKEEPER) {
     // Enable Kafka transport
     winston.add(coreos_tools.KafkaTransport, {
         zookeeper: process.env.WINSTON_KAFKA_ZOOKEEPER,
-        topics: [ options.app_name, 'system' ]
+        topics: [ 'app-' + options.app_name, 'system' ]
     });
 }
 
