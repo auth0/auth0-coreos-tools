@@ -72,6 +72,14 @@ if (process.env.WINSTON_ADD_TIMESTAMP) {
     winston.add(winston.transports.Console, { timestamp: true });
 }
 
+if (process.env.WINSTON_KAFKA_ZOOKEEPER) {
+    // Enable Kafka transport
+    winston.add(coreos_tools.KafkaTransport, {
+        zookeeper: process.env.WINSTON_KAFKA_ZOOKEEPER,
+        topics: [ options.app_name, 'system' ]
+    });
+}
+
 winston.info('foreman: starting', options);
 
 // Container name and config path.
