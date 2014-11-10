@@ -67,7 +67,7 @@ var async = require('async')
     , coreos_tools = require('../lib/index');
 
 var logger = coreos_tools.create_logger(
-    'foreman-' + options.app_name
+    'foreman-' + options.app_name + '-' + options.app_id,
     [ 'app-' + options.app_name, 'system' ]);
 
 logger.info(options, 'starting');
