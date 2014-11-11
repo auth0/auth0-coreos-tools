@@ -290,7 +290,7 @@ async.series([
                         if (backend)
                             backend.kill(signal);
                     }, +config.cooldown_timeout * 1000);
-                    logger.info({ timeout: +config.cooldown_timeout }, 'initiated cooldown timeout');
+                    logger.info({ timeout: +config.cooldown_timeout }, 'initiated cooldown');
 
                     // Let active requests complete up to the graceful shutdown timeout
                     setTimeout(function () {
@@ -299,7 +299,7 @@ async.series([
                             process.exit(exitCode);
                         });
                     }, +config.graceful_shutdown_timeout * 1000);
-                    logger.info({ timeout: +config.graceful_shutdown_timeout }, 'initiated graceful shutdown timeout');
+                    logger.info({ timeout: +config.graceful_shutdown_timeout }, 'initiated graceful shutdown');
                 }
             ], callback);
         }
