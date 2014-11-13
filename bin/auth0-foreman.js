@@ -230,17 +230,7 @@ async.series([
     function (callback) {
         // Register static metadata in etcd
         config_created = true;
-        async.parallel([
-            function (callback) {
-                etcd.set(config_path + '/created', Date.now(), callback);
-            },
-            function (callback) {
-                etcd.set(config_path + '/image', options.image, callback);
-            },
-            function (callback) {
-                etcd.set(config_path + '/host', options.coreos_host, callback);
-            }
-        ], callback);
+        etcd.set(config_path + '/created', Date.now(), callback);
     },
     function (callback) {
         logger.info({ path: config_path }, 'created routing entry in etcd')
