@@ -82,7 +82,6 @@ var container = docker.getContainer(container_name);
 var route;
 var route_timer;
 var config;
-var config_created;
 var backend;
 
 // Register to clean up on process exit
@@ -229,7 +228,6 @@ async.series([
     },
     function (callback) {
         // Register static metadata in etcd
-        config_created = true;
         etcd.set(config_path + '/created', Date.now(), callback);
     },
     function (callback) {
@@ -350,15 +348,10 @@ function last_resort_cleanup(callback) {
                 },
                 function (callback) {
                     // Clean up etcd
-                    if (config_created) {
-                        config_created = undefined;
-                        logger.info('last resort cleanup: removing routing entry in etcd');
-                        etcd.del(config_path, { recursive: true }, function () {
-                            callback();
-                        });
-                    }
-                    else 
+                    logger.info('last resort cleanup: removing routing entry in etcd');
+                    etcd.del(config_path, { recursive: true }, function () {
                         callback();
+                    });
                 }
             ], callback);
         },
