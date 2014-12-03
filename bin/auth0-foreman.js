@@ -338,7 +338,7 @@ function last_resort_cleanup(callback) {
                             // This is the child_process based implementation
                             try { tmp.kill('SIGKILL'); } catch(e) {}
                             // Remove the child Docker container
-                            container.remove({ force: true }, function () {
+                            container.remove({ v: true, force: true }, function () {
                                 callback();
                             });
                         }
@@ -363,7 +363,7 @@ function last_resort_cleanup(callback) {
                 var tmp = foreman_container_name;
                 foreman_container_name = undefined;
                 var foreman = docker.getContainer(tmp); 
-                foreman.remove({ force: true }, function () {
+                foreman.remove({ v: true, force: true }, function () {
                     callback();
                 });
             }
