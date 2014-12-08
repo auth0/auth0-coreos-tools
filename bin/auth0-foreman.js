@@ -9,9 +9,10 @@
 
 /////// Optional environment variables:
 
-// APP_HEALTH_URL = URL path that must respond with HTTP 200 for the sevice to be healthy
+// APP_HEALTH_URL - URL path that must respond with HTTP 200 for the sevice to be healthy
 // APP_PORT - the TCP port the application listens on within the container; if not provided,
 //            the foreman will not wait for the Docker port mapping
+// APP_HOST_PORT - the TCP port on the host which APP_PORT will be mapped to explicitly 
 
 /////// Required command line parameters: 
 
@@ -34,6 +35,7 @@ var options = {};
 
 options.app_health_url = process.env.APP_HEALTH_URL;
 options.app_port = process.env.APP_PORT;
+options.app_host_port = process.env.APP_HOST_PORT;
 
 // Obtain command and arguments to start the backend
 
@@ -162,7 +164,11 @@ async.series([
         }
     },
     function (callback) {
-        // Wait for the docker port mapping if requested
+        // Wait for the docker port mapping if requested and not explicitly mapped
+        if (options.app_host_port) {
+            route = options.app_host_port;
+            return callback();
+        }
         if (!options.app_port) {
             route = 'default';
             return callback();
