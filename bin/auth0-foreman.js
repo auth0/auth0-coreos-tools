@@ -108,6 +108,20 @@ async.series([
         });
     },
     function (callback) {
+        // Create entry in etcd for any requests waiting in parallel
+        async.parallel([
+            function (callback) {
+                etcd.set(config_path + '/initialized', Date.now(), callback);
+            },
+            function (callback) {
+                etcd.set(config_path + '/image', process.env.IMAGE, callback);
+            },
+            function (callback) {
+                etcd.set(config_path + '/host', process.env.COREOS_HOST, callback);
+            }
+        ], callback);                                
+    },
+    function (callback) {
         // Etablish signal file and watch it, then start the backend
         // and wait for it to signal back, or for the startup timer to expire.
 
