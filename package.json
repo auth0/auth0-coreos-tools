@@ -36,7 +36,8 @@
     "winston": "~0.8.1",
     "bunyan": "~1.2.1",
     "tripwire": "0.9.0",
-    "kafka-node": "~0.2.14"
+    "kafka-node": "~0.2.14",
+    "jws": "~2.0.0"
   },
   "homepage": "http://github.com/auth0/auth0-coreos-tools",
   "repository": {
