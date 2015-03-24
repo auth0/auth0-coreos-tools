@@ -36,7 +36,7 @@
     "winston": "~0.8.1",
     "bunyan": "~1.2.1",
     "tripwire": "0.9.0",
-    "kafka-node": "~0.2.14",
+    "kafka-node": "~0.2.24",
     "jws": "~2.0.0",
     "uuid": "~2.0.1"
   },
