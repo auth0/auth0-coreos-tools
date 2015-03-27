@@ -31,14 +31,16 @@
   },
   "dependencies": {
     "async": "~0.9.0",
-    "node-etcd": "~3.0.2",
-    "dockerode": "~2.0.3",
-    "winston": "~0.8.1",
     "bunyan": "~1.2.1",
-    "tripwire": "0.9.0",
-    "kafka-node": "~0.2.24",
+    "dockerode": "~2.0.3",
     "jws": "~2.0.0",
-    "uuid": "~2.0.1"
+    "kafka-node": "~0.2.24",
+    "lru-cache": "^2.5.0",
+    "node-etcd": "~3.0.2",
+    "request": "^2.54.0",
+    "tripwire": "0.9.0",
+    "uuid": "~2.0.1",
+    "winston": "~0.8.1"
   },
   "homepage": "http://github.com/auth0/auth0-coreos-tools",
   "repository": {
