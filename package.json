@@ -39,6 +39,7 @@
     "node-etcd": "~3.0.2",
     "request": "^2.54.0",
     "tripwire": "~0.10.0",
+    "ua-parser-js": "^0.7.9",
     "uuid": "~2.0.1",
     "winston": "~0.8.1"
   },
