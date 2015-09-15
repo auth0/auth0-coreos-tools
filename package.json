@@ -35,7 +35,7 @@
     "dockerode": "~2.0.3",
     "jws": "~2.0.0",
     "lru-cache": "^2.5.0",
-    "node-etcd": "~3.0.2",
+    "node-etcd": "~4.2.1",
     "request": "^2.54.0",
     "tripwire": "~0.10.0",
     "uuid": "~2.0.1",
